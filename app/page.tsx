@@ -1,12 +1,20 @@
 import ImageCard from "./ImageCard";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
+  }
+);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function GalleryPage() {
-  const supabase = createSupabaseServerClient();
-
   const { data: images, error } = await supabase
     .from("images")
     .select(`
