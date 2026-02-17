@@ -51,7 +51,7 @@ export default function ImageCard({ image }: { image: ImageRow }) {
         <div className="aspect-[4/5] w-full overflow-hidden">
           <img
             src={image.url}
-            alt={caption || "Gallery image"}
+            alt={captionText || "Gallery image"}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             loading="lazy"
             decoding="async"
