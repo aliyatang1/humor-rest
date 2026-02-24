@@ -1,4 +1,6 @@
 import ImageCard from "./ImageCard";
+import UploadSection from "./UploadSection";
+import GalleryGrid from "./GalleryGrid";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -51,16 +53,11 @@ export default async function GalleryPage() {
             <div className="h-[2px] w-16 rounded-full bg-slate-200" />
           </div>
         </header>
+        {/* Upload Section */}
+        <UploadSection />
 
-        {images && images.length > 0 ? (
-          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {images.map((image) => (
-              <ImageCard key={image.id} image={image as any} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-center text-slate-500">No public images available.</p>
-        )}
+        {/* Gallery Grid */}
+        <GalleryGrid images={images as any} />
       </div>
     </main>
   );
