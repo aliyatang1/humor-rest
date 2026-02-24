@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { submitVote } from "./actions/votes";
 
-type Caption = { id: string; content: string };
+type Caption = { id: string; content?: string; text?: string };
 type ImageRow = {
   id: string;
   url: string;
@@ -11,14 +11,65 @@ type ImageRow = {
 };
 
 export default function ImageCard({ image }: { image: ImageRow }) {
-  const [status, setStatus] = useState<"idle" | "loaded" | "error">("idle");
+  // status is null on the server so no badge is rendered during SSR.
+  const [status, setStatus] = useState<null | "idle" | "loaded" | "error">(null);
   const [isVoting, setIsVoting] = useState(false);
   const [voteMessage, setVoteMessage] = useState<string | null>(null);
   const [userVote, setUserVote] = useState<"upvote" | "downvote" | null>(null);
 
-  const caption = image.captions?.[0];
+  // Set to "idle" only on client mount so loading badge appears client-side while image loads
+  useEffect(() => {
+    setStatus((s) => (s === null ? "idle" : s));
+  }, []);
+
+  // If an image stays in "idle" for a while, try a programmatic check / reload and log diagnostics
+  useEffect(() => {
+    if (!image?.url) return;
+    if (status !== "idle") return;
+
+    const timeoutMs = 3500;
+    const img = new Image();
+    let handled = false;
+    const timer = setTimeout(() => {
+      // attempt programmatic load with cache-bust to force a network request
+      try {
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          if (handled) return;
+          handled = true;
+          console.debug("[ImageCard] programmatic onload", image.id, image.url);
+          setStatus("loaded");
+        };
+        img.onerror = (e) => {
+          if (handled) return;
+          handled = true;
+          console.error("[ImageCard] programmatic onerror", image.id, image.url, e);
+          setStatus("error");
+        };
+        // append a cache-bust query param safely
+        const sep = image.url.includes("?") ? "&" : "?";
+        img.src = `${image.url}${sep}cachebust=${Date.now()}`;
+      } catch (err) {
+        console.error("[ImageCard] programmatic load failed", image.id, image.url, err);
+        setStatus("error");
+      }
+    }, timeoutMs);
+
+    return () => {
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [image?.url, status]);
+
+  // Prefer the first caption with non-empty text/content, fall back to first caption
+  const caption =
+    image.captions?.find((c) => {
+      const content = c.content ?? (c as any).text ?? "";
+      return typeof content === "string" && content.trim().length > 0;
+    }) ?? image.captions?.[0];
   const captionId = caption?.id;
-  const captionText = caption?.content ?? "";
+  const captionText = ((caption?.content ?? (caption as any)?.text) || "").toString().trim();
 
   const handleVote = async (voteType: "upvote" | "downvote") => {
     if (!captionId) {
@@ -29,19 +80,22 @@ export default function ImageCard({ image }: { image: ImageRow }) {
     setIsVoting(true);
     setVoteMessage(null);
 
-    const result = await submitVote(captionId, voteType);
+    try {
+      const result = await submitVote(captionId, voteType);
 
-    if (result.success) {
-      setUserVote(voteType);
-      setVoteMessage(
-        voteType === "upvote" ? "✓ Upvoted!" : "✓ Downvoted!"
-      );
-      setTimeout(() => setVoteMessage(null), 2000);
-    } else {
-      setVoteMessage(result.error || "Failed to submit vote");
+      if (result.success) {
+        setUserVote(voteType);
+        setVoteMessage(voteType === "upvote" ? "✓ Upvoted!" : "✓ Downvoted!");
+        setTimeout(() => setVoteMessage(null), 2000);
+      } else {
+        setVoteMessage(result.error || "Failed to submit vote");
+      }
+    } catch (err) {
+      console.error("[ImageCard] vote error", err);
+      setVoteMessage("Failed to submit vote");
+    } finally {
+      setIsVoting(false);
     }
-
-    setIsVoting(false);
   };
 
   return (
@@ -55,13 +109,19 @@ export default function ImageCard({ image }: { image: ImageRow }) {
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             loading="lazy"
             decoding="async"
-            onLoad={() => setStatus("loaded")}
-            onError={() => setStatus("error")}
+            onLoad={() => {
+              console.debug("[ImageCard] onLoad", image.id, image.url);
+              setStatus("loaded");
+            }}
+            onError={(e) => {
+              console.error("[ImageCard] onError", image.id, image.url, e);
+              setStatus("error");
+            }}
           />
         </div>
 
         {/* Loading / Error badges */}
-        {status !== "loaded" && (
+        {status !== null && status !== "loaded" && (
           <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-slate-700 shadow-sm backdrop-blur">
             {status === "idle" ? "Loading…" : "Image failed"}
           </div>
@@ -105,9 +165,11 @@ export default function ImageCard({ image }: { image: ImageRow }) {
               </button>
             </div>
             {voteMessage && (
-              <p className={`text-xs font-medium ${
-                voteMessage.startsWith("✓") ? "text-green-600" : "text-red-600"
-              }`}>
+              <p
+                className={`text-xs font-medium ${
+                  voteMessage.startsWith("✓") ? "text-green-600" : "text-red-600"
+                }`}
+              >
                 {voteMessage}
               </p>
             )}
@@ -116,9 +178,7 @@ export default function ImageCard({ image }: { image: ImageRow }) {
 
         <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
           <span className="font-semibold uppercase tracking-wide">Community</span>
-          <span className="rounded-full bg-slate-100 px-2 py-1 font-mono">
-            {image.id.slice(0, 8)}
-          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 font-mono">{image.id.slice(0, 8)}</span>
         </div>
       </div>
     </article>

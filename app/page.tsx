@@ -39,6 +39,16 @@ export default async function GalleryPage() {
     );
   }
 
+  // Filter to only show images that have at least one non-empty caption
+  const imagesWithCaptions =
+    images?.filter((image: any) =>
+      Array.isArray(image.captions) &&
+      image.captions.some((c: any) => {
+        const text = (c.content ?? c.text) || "";
+        return typeof text === "string" && text.trim().length > 0;
+      })
+    ) || [];
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-6xl">
@@ -57,7 +67,7 @@ export default async function GalleryPage() {
         <UploadSection />
 
         {/* Gallery Grid */}
-        <GalleryGrid images={images as any} />
+        <GalleryGrid images={imagesWithCaptions} />
       </div>
     </main>
   );
