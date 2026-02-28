@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { uploadImageAndGenerateCaptions } from "./actions/captions";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function UploadSection() {
   const [isUploadingOrGenerating, setIsUploadingOrGenerating] = useState(false);
@@ -10,6 +11,31 @@ export default function UploadSection() {
   >("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<string[]>([]);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [user, setUser] = useState<any | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchUser() {
+      const { data } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setUser(data.user ?? null);
+    }
+
+    fetchUser();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      try {
+        sub.subscription.unsubscribe();
+      } catch (e) {}
+    };
+  }, [supabase]);
 
   const handleFileSelect = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -96,6 +122,19 @@ export default function UploadSection() {
       }, 3000);
     }
   };
+
+  // If the user is not authenticated, prompt to sign in.
+  if (!user) {
+    return (
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm p-8 mb-12">
+        <h2 className="text-2xl font-bold text-slate-900 mb-4">Upload & Generate Captions</h2>
+        <p className="text-slate-600 mb-6">You must be signed in to upload images.</p>
+        <div className="flex gap-3">
+          <a href="/login" className="rounded-2xl bg-slate-900 px-4 py-2 text-white">Sign in</a>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white shadow-sm p-8 mb-12">
