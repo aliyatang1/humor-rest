@@ -1,4 +1,3 @@
-import ImageCard from "./ImageCard";
 import UploadSection from "./UploadSection";
 import GalleryGrid from "./GalleryGrid";
 import { createClient } from "@supabase/supabase-js";
@@ -40,33 +39,22 @@ export default async function GalleryPage() {
     );
   }
 
-  // Flatten: one card per caption (and filter out empties)
-  const cardsWithCaptions =
-    images
-      ?.flatMap((img: any) => {
-        const caps = Array.isArray(img.captions) ? img.captions : [];
-        return caps
-          .map((c: any) => {
-            const text = (c.content ?? c.text ?? "").toString().trim();
-            if (!text) return null; // skip empty captions
-
-            return {
-              cardId: c.id, // unique per caption card
-              imageId: img.id,
-              url: img.url,
-              caption: { id: c.id, content: text },
-            };
-          })
-          .filter(Boolean);
-      })
-      .filter(Boolean) || [];
+  // Pass raw images; GalleryGrid will:
+  // - drop empty captions
+  // - show one caption-card at a time per image tile
+  // - advance on vote
+  const imagesSafe = images ?? [];
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto max-w-6xl">
         <header className="mb-12 text-center">
-          <h1 className="text-5xl font-black tracking-tight text-slate-900">HUMOR FEED</h1>
-          <p className="mt-3 text-base text-slate-500">The internet’s quiet thoughts, out loud.</p>
+          <h1 className="text-5xl font-black tracking-tight text-slate-900">
+            HUMOR FEED
+          </h1>
+          <p className="mt-3 text-base text-slate-500">
+            The internet’s quiet thoughts, out loud.
+          </p>
           <div className="mt-6 flex justify-center">
             <div className="h-[2px] w-16 rounded-full bg-slate-200" />
           </div>
@@ -74,8 +62,7 @@ export default async function GalleryPage() {
 
         <UploadSection />
 
-        {/* Now the grid receives cards (one per caption) */}
-        <GalleryGrid images={cardsWithCaptions} />
+        <GalleryGrid images={imagesSafe as any} />
       </div>
     </main>
   );

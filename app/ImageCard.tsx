@@ -3,21 +3,23 @@
 import React, { useEffect, useState } from "react";
 import { submitVote } from "./actions/votes";
 
-type Caption = { id: string; content?: string; text?: string };
+type CaptionItem = { id: string; text: string };
 
-type ImageCardRow = {
-  // A unique id for the card (use caption id so each caption becomes its own card)
-  cardId: string;
-
-  // Original image info
+type CardItem = {
   imageId: string;
   url: string;
-
-  // Single caption for this card
-  caption: Caption;
+  caption: CaptionItem; // already non-empty
 };
 
-export default function ImageCard({ image }: { image: ImageCardRow }) {
+export default function ImageCard({
+  item,
+  onVoted,
+  progress,
+}: {
+  item: CardItem;
+  onVoted: () => void;
+  progress?: { current: number; total: number };
+}) {
   const [status, setStatus] = useState<null | "idle" | "loaded" | "error">(null);
   const [isVoting, setIsVoting] = useState(false);
   const [voteMessage, setVoteMessage] = useState<string | null>(null);
@@ -27,9 +29,9 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
     setStatus((s) => (s === null ? "idle" : s));
   }, []);
 
-  // programmatic retry if stuck loading
+  // If an image stays in "idle" for a while, try programmatic reload
   useEffect(() => {
-    if (!image?.url) return;
+    if (!item?.url) return;
     if (status !== "idle") return;
 
     const timeoutMs = 3500;
@@ -42,19 +44,16 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
         img.onload = () => {
           if (handled) return;
           handled = true;
-          console.debug("[ImageCard] programmatic onload", image.imageId, image.url);
           setStatus("loaded");
         };
-        img.onerror = (e) => {
+        img.onerror = () => {
           if (handled) return;
           handled = true;
-          console.error("[ImageCard] programmatic onerror", image.imageId, image.url, e);
           setStatus("error");
         };
-        const sep = image.url.includes("?") ? "&" : "?";
-        img.src = `${image.url}${sep}cachebust=${Date.now()}`;
-      } catch (err) {
-        console.error("[ImageCard] programmatic load failed", image.imageId, image.url, err);
+        const sep = item.url.includes("?") ? "&" : "?";
+        img.src = `${item.url}${sep}cachebust=${Date.now()}`;
+      } catch {
         setStatus("error");
       }
     }, timeoutMs);
@@ -64,33 +63,21 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
       img.onload = null;
       img.onerror = null;
     };
-  }, [image.url, image.imageId, status]);
-
-  // Normalize caption text + ignore empties
-  const captionText = (image.caption?.content ?? (image.caption as any)?.text ?? "")
-    .toString()
-    .trim();
-
-  // If caption is empty, you can either:
-  // A) render nothing (return null), or
-  // B) show "No caption yet"
-  // You asked to NOT call empty captions, so we do A:
-  if (!captionText) return null;
-
-  const captionId = image.caption.id;
-  const altText = captionText || "Gallery image";
+  }, [item.url, status]);
 
   const handleVote = async (voteType: "upvote" | "downvote") => {
     setIsVoting(true);
     setVoteMessage(null);
 
     try {
-      const result = await submitVote(captionId, voteType);
+      const result = await submitVote(item.caption.id, voteType);
 
       if (result.success) {
         setUserVote(voteType);
-        setVoteMessage(voteType === "upvote" ? "✓ Upvoted!" : "✓ Downvoted!");
-        setTimeout(() => setVoteMessage(null), 2000);
+        setVoteMessage(voteType === "upvote" ? "✓ Upvoted" : "✓ Downvoted");
+
+        // Immediately advance the stack so this card disappears
+        onVoted();
       } else {
         setVoteMessage(result.error || "Failed to submit vote");
       }
@@ -108,19 +95,13 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
       <div className="relative bg-slate-100">
         <div className="aspect-[4/5] w-full overflow-hidden">
           <img
-            src={image.url}
-            alt={altText}
+            src={item.url}
+            alt={item.caption.text || "Gallery image"}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             loading="lazy"
             decoding="async"
-            onLoad={() => {
-              console.debug("[ImageCard] onLoad", image.imageId, image.url);
-              setStatus("loaded");
-            }}
-            onError={(e) => {
-              console.error("[ImageCard] onError", image.imageId, image.url, e);
-              setStatus("error");
-            }}
+            onLoad={() => setStatus("loaded")}
+            onError={() => setStatus("error")}
           />
         </div>
 
@@ -131,13 +112,15 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
           </div>
         )}
 
+        {/* Soft bottom fade for caption readability */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent" />
       </div>
 
-      {/* Caption + Vote */}
+      {/* Caption */}
       <div className="p-5">
-        <p className="text-[15px] font-medium leading-snug text-slate-900">{captionText}</p>
+        <p className="text-[15px] font-medium leading-snug text-slate-900">{item.caption.text}</p>
 
+        {/* Voting */}
         <div className="mt-4 space-y-2">
           <div className="flex gap-2">
             <button
@@ -177,9 +160,14 @@ export default function ImageCard({ image }: { image: ImageCardRow }) {
 
         <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
           <span className="font-semibold uppercase tracking-wide">Community</span>
-          <span className="rounded-full bg-slate-100 px-2 py-1 font-mono">
-            {image.imageId.slice(0, 8)}
-          </span>
+
+          {progress ? (
+            <span className="rounded-full bg-slate-100 px-2 py-1 font-mono">
+              {progress.current}/{progress.total}
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-2 py-1 font-mono">{item.imageId.slice(0, 8)}</span>
+          )}
         </div>
       </div>
     </article>
